@@ -1,0 +1,137 @@
+#define BLYNK_TEMPLATE_ID           "TMPL6znXyt2fG"
+#define BLYNK_TEMPLATE_NAME         "Quickstart Device"
+#define BLYNK_AUTH_TOKEN            "EKRBzjm6LqykYY5xLMb4xANaUHGBamcG"
+
+#define BLYNK_PRINT Serial
+
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+
+#include <DHT.h>
+#include <SFE_BMP180.h>
+#include <Wire.h>
+
+// Wi-Fi bilgileri
+char ssid[] = "FiberHGW_TPAE9C_2.4GHz";
+char pass[] = "3876b*92/T15y4+P93";
+
+// DHT11 ayarları
+#define DHTPIN 14
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+// BMP180 nesnesi
+SFE_BMP180 bmp180;
+#define ALTITUDE 850.0  // Rakım bilgisi
+
+// RGB LED pinleri
+#define RED_LED 25
+#define GREEN_LED 26
+#define BLUE_LED 27
+
+BlynkTimer timer;
+
+// LED kontrolü için zamanlayıcılar
+unsigned long ledMillis = 0;
+bool redState = false;
+bool sensorError = false;
+
+void kontrolLEDler() {
+  // WiFi bağlantısı yoksa: mavi LED sürekli yanar
+  if (WiFi.status() != WL_CONNECTED) {
+    digitalWrite(BLUE_LED, LOW); // aktif
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, HIGH);
+    return;
+  }
+
+  // Sensör hatası varsa: yeşil LED hızlı yanıp söner
+  if (sensorError) {
+    digitalWrite(GREEN_LED, millis() % 500 < 250 ? LOW : HIGH); // hızlı yanıp sönme
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(BLUE_LED, HIGH);
+    return;
+  }
+
+  // Normal durumda: kırmızı LED 2 sn yanar, 2 sn sönük kalır
+  if (millis() - ledMillis >= 2000) {
+    redState = !redState;
+    digitalWrite(RED_LED, redState ? LOW : HIGH);
+    ledMillis = millis();
+  }
+
+  // Diğer LED'ler kapalı
+  digitalWrite(GREEN_LED, HIGH);
+  digitalWrite(BLUE_LED, HIGH);
+}
+
+void sendSensor() {
+  sensorError = false;
+
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  double seaLevelPressure;
+
+  if (isnan(h) || isnan(t)) {
+    Serial.println("DHT11 sensöründen veri alınamadı!");
+    sensorError = true;
+    return;
+  }
+
+  char status;
+  double T, P_raw;
+
+  status = bmp180.startTemperature();
+  if (status != 0) {
+    delay(status);
+    status = bmp180.getTemperature(T);
+    if (status != 0) {
+      status = bmp180.startPressure(3);
+      if (status != 0) {
+        delay(status);
+        status = bmp180.getPressure(P_raw, T);
+        if (status != 0) {
+          seaLevelPressure = bmp180.sealevel(P_raw, ALTITUDE);
+
+          Blynk.virtualWrite(V1, t);
+          Blynk.virtualWrite(V2, h);
+          Blynk.virtualWrite(V3, seaLevelPressure);
+          return;
+        }
+      }
+    }
+  }
+
+  Serial.println("BMP180 sensöründen veri alınamadı!");
+  sensorError = true;
+}
+
+void setup() {
+  Serial.begin(115200);
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+  dht.begin();
+
+  if (bmp180.begin()) {
+    Serial.println("BMP180 başlatıldı.");
+  } else {
+    Serial.println("BMP180 başlatılamadı!");
+    sensorError = true;
+  }
+
+  // LED pin ayarları
+  pinMode(RED_LED, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(BLUE_LED, OUTPUT);
+  digitalWrite(RED_LED, HIGH);
+  digitalWrite(GREEN_LED, HIGH);
+  digitalWrite(BLUE_LED, HIGH);
+
+  timer.setInterval(15000L, sendSensor); // veriler 15 snde bir güncellenir
+}
+
+void loop() {
+  Blynk.run();
+  timer.run();
+  kontrolLEDler();
+}

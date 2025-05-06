@@ -13,8 +13,8 @@
 #include <Wire.h>
 
 // Wi-Fi bilgileri
-char ssid[] = "FiberHGW_TPAE9C_2.4GHz";
-char pass[] = "3876b*92/T15y4+P93";
+char ssid[] = "*******";
+char pass[] = "********";
 
 // DHT11 ayarları
 #define DHTPIN 14
